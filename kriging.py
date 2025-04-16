@@ -216,8 +216,6 @@ class Kriging:
         -----------
         cycle_jump: Minimum timegape between subsequent measurements to separate them into two different measurement cycles, in seconds. Default 60 seconds.
         isACF: set to False if using this function for general averaging of another time of (non-ACF) dataset. Default True.
-        
-        
         '''
         # Separate the current dt values into bins within a few minutes of each other, I think this normally corresponds to data taken during the same rotation through calibrators before going back to antenna
         
@@ -325,6 +323,7 @@ class Kriging:
         # Making a matrix with only the data within dtmax/2 of the interp time, to insure we only use up to dtmax of the ACF.
         d_red = dat[abs(t - interp_time) < dtmax/2] 
         t_red = t[abs(t - interp_time) < dtmax/2]
+        self.Ktimes = t_red # for testing
         
         # this line skips interp_times that are not within dtmax/2 of the measured data
         if len(t_red) == 0: return np.nan, np.nan, np.nan 
@@ -348,6 +347,7 @@ class Kriging:
         # "w": array of weights for the weighted sum to compute inteprolated value
         n = len(d)-1
         w = -Cinv[n,0:n] / Cinv[n,n]
+        self.Kweights = w # for testing
         
         # compute weighted sum to find interpolated value
         dinterp = np.dot(w,d[0:n])
