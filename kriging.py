@@ -214,7 +214,7 @@ class Kriging:
         
         Parameters
         -----------
-        cycle_jump: Minimum timegape between subsequent measurements to separate them into two different measurement cycles, in seconds. Default 60 seconds.
+        cycle_jump: Minimum timegap between subsequent measurements to separate them into two different measurement cycles, in seconds. Default 60 seconds.
         isACF: set to False if using this function for general averaging of another time of (non-ACF) dataset. Default True.
         '''
         # Separate the current dt values into bins within a few minutes of each other, I think this normally corresponds to data taken during the same rotation through calibrators before going back to antenna
@@ -320,7 +320,7 @@ class Kriging:
         ACF_func: function modelling the ACF of dat, fit for at least 0<=dt<=dtmax. Takes dt input in **hours**.
         '''
         
-        # Making a matrix with only the data within dtmax/2 of the interp time, to insure we only use up to dtmax of the ACF.
+        # Making a matrix with only the data within dtmax/2 of the interp time, to ensure we only use up to dtmax of the ACF.
         d_red = dat[abs(t - interp_time) < dtmax/2] 
         t_red = t[abs(t - interp_time) < dtmax/2]
         self.Ktimes = t_red # for testing

@@ -54,7 +54,10 @@ class RFI_flagging:
         lst_binned, data_binned, bin_inds = lst_binning(self.data, self.lst, binsize, method='median')
         MAD = np.array([np.median(np.abs(data_binned[i] - self.data[bin_inds==i]), \
                                                    axis=0) for i in range(len(lst_binned))])
+        
         MAD = median_filter(MAD, size=100)
+        print(data_binned.shape) # note there is issue with these array shapes not matching, algorithm exits with error
+        print(bin_inds.shape)
         x = (np.abs(self.data - data_binned[bin_inds]) > threshold *  MAD[bin_inds])
         self.data[x] = np.nan
 
@@ -71,19 +74,27 @@ class RFI_flagging:
         
         # arange data for filter of size window across frequency
         x = np.array([self.data[:, i - h:i + (h+1)] for i in range(h, N - h)])
+        print(self.data.shape)
+        print(x.shape)
         # median filter
         med_filt = np.nanmedian(x, axis=-1)
+        print(med_filt.shape)
         # detrend
         x -= med_filt[:,:,None]
+        print(x.shape)
         # build data for filter with central point removed
         x_flag = np.delete(x, h, axis=-1)
+        print(x_flag.shape)
         
         # compute std filter with & without central point
         std = np.nanstd(x, axis=-1)
         flag_std = np.nanstd(x_flag, axis=-1)
+        print(std.shape)
+        print(flag_std.shape)
 
         # relative standard deviation residuals
         res = ((std - flag_std) / med_filt).T
+        print(res.shape)
         # flag where residual > thresh
         flag_inds = np.where(res > thresh)
 

@@ -11,6 +11,7 @@ import scipy
 from matplotlib import pyplot as plt
 from matplotlib.colors import Normalize
 import matplotlib.cm as cm
+from matplotlib.ticker import PercentFormatter
 from importlib import reload
 import helper_functions
 reload(helper_functions)
@@ -235,7 +236,7 @@ def waterfall_alldays(data,lst,freqarr=freqarr_default,minfreq=30,maxfreq=200,mi
     for i in range(n_days):
         
         # 2. Bin each day into 1h bins.
-        lst_binning_hth(data_split[i],lst_split[i],binsize=minperbin)
+        data_split_binned, lst_split_bins, bin_inds = lst_binning_hth(data_split[i],lst_split[i],binsize=minperbin)
         
         # 3. For each 1h for this day, plot data as a function of frequency.
         FFplot, LSTplot = np.meshgrid(freqarr[minfreqarg:maxfreqarg],lst_split_bins)
@@ -255,6 +256,136 @@ def waterfall_alldays(data,lst,freqarr=freqarr_default,minfreq=30,maxfreq=200,mi
     #fig.colorbar(im, ax=axs.ravel().tolist())
     fig.colorbar(im,cax=cbar_ax,ticks=ticks_cb,label='Absolute Fractional Difference from Time-Median')
     plt.subplots_adjust(hspace=0.15)
+    plt.savefig(year+'_'+instrument+'_'+channel+'_'+source+'_var-from-median.jpg',dpi=300,bbox_inches='tight')
+    plt.show()
+    
+    return
+
+
+# ----------- Custom waterfall plotting for specific formatting requirements ------------------------------------------ # 
+def waterfall_custom(data,lst,freqarr=freqarr_default,minfreq=30,maxfreq=200,minperbin=60,year='?',instrument='?',channel='?',source='?'):
+    '''
+    Plots calibration source data in waterfall plots.
+    
+    1. Splits data into days,
+    2. Bins each day into 1h bins,
+    3. For each day, makes a plot showing the data as a function of frequency for each 1h LST bin.
+    
+    Parameters
+    ------------
+    data: All unbinned power data. Is a function of LST (dimension 1) and frequency (dimension 2).
+    lst: Sequential array of LST corresponding to data.
+    minperbin: Width of LST bins when binning each day individually. Default: 60 mins/bin.
+    source: String labelling which source is being used for the plotting, for labelling purposes. # Maybe in the future we can add automatic retrieval in the metadatabase.
+    freqarr: raw frequency array: in general 0-250 MHz, 4096 channels.
+    minfreq: minimum frequency at which to truncate for plotting.
+    maxfreq: maximum frequency at which to truncate for plotting.
+    
+    Returns
+    ---------
+    N/A
+    '''
+    # Dealing with frequencies
+    minfreqarg = int(minfreq/freqstep)
+    maxfreqarg = int(maxfreq/freqstep)
+    
+    # 1. Split data into days.
+    lst_split, data_split = LST_days_split(lst,data) # Looks for end of cycles in the LST array (i.e. when it goes from ~24h -> ~0h)
+    
+    n_days = len(lst_split) # number of days the data was split into
+    
+    ncols = np.min([5,n_days])
+    if n_days//5 == 0 or n_days%5 == 0:
+        # i.e. for 0-5 days of data
+        nrows = int(n_days/ncols)
+    else: 
+        # nrows = int(n_days/ncols+1)
+        nrows = 2 # I just want a subset of the days
+
+    # plt.rcParams.update({'font.size': 13})
+    # plt.rc('xtick', labelsize=13) 
+    # plt.rc('ytick', labelsize=13) 
+    fig, axs = plt.subplots(nrows=nrows,ncols=ncols,figsize=(4*ncols,10*nrows),constrained_layout=True)
+    plt.tight_layout(rect=[0, 0, 1, 0.88])
+    axs = axs.flatten() # makes iteration easier
+    
+    # ------------ Code that ensure the colorbar is shared between all subplots and represents the full range of values ---------- #
+    normalizer = Normalize(vmin = 0, vmax=np.percentile(data,99,axis=None)) # 99th percentile
+    im = cm.ScalarMappable(norm=normalizer)
+    ticks_cb = np.linspace(0,np.percentile(data,99,axis=None),10)
+    #print(np.percentile(data,95,axis=None))
+    # ---------------------------------------------- #
+    
+    # In this loop, i (first loop) indexes the day
+    if source == 'Post-flag short':
+        for i in range(len(axs)):
+            if i == 0:
+                # 2. Bin each day into 1h bins5
+                data_split_binned, lst_split_bins, bin_inds = lst_binning_hth(data_split[i],lst_split[i],binsize=minperbin)
+                
+                # 3. For each 1h for this day, plot data as a function of frequency.
+                FFplot, LSTplot = np.meshgrid(freqarr[minfreqarg:maxfreqarg],lst_split_bins)
+                
+                axs[i].pcolormesh(FFplot,LSTplot,data_split_binned[:,minfreqarg:maxfreqarg]*np.nan,shading='auto',norm=normalizer) # norm = normalizer
+                
+                if i > 4:
+                    axs[i].set_xlabel('Frequency [MHz]',fontsize=17)
+                axs[i].invert_yaxis()
+                if (i%ncols == 0):
+                    axs[i].set_ylabel('LST [h]',fontsize=17)
+                ticks = np.linspace(0,24,25)
+                axs[i].set_yticks(ticks=ticks)
+                axs[i].set_title('Day '+str(i),fontsize=17)
+                axs[i].tick_params(labelsize=15)
+            else:
+                # 2. Bin each day into 1h bins5
+                data_split_binned, lst_split_bins, bin_inds = lst_binning_hth(data_split[i-1],lst_split[i-1],binsize=minperbin)
+                
+                # 3. For each 1h for this day, plot data as a function of frequency.
+                FFplot, LSTplot = np.meshgrid(freqarr[minfreqarg:maxfreqarg],lst_split_bins)
+                
+                axs[i].pcolormesh(FFplot,LSTplot,data_split_binned[:,minfreqarg:maxfreqarg],shading='auto',norm=normalizer) # norm = normalizer
+                
+                if i > 4:
+                    axs[i].set_xlabel('Frequency [MHz]',fontsize=17)
+                axs[i].invert_yaxis()
+                if (i%ncols == 0):
+                    axs[i].set_ylabel('LST [h]',fontsize=17)
+                ticks = np.linspace(0,24,25)
+                axs[i].set_yticks(ticks=ticks)
+                axs[i].set_title('Day '+str(i),fontsize=17)
+                axs[i].tick_params(labelsize=15)
+
+    else:
+        for i in range(len(axs)):
+            # 2. Bin each day into 1h bins5
+            data_split_binned, lst_split_bins, bin_inds = lst_binning_hth(data_split[i],lst_split[i],binsize=minperbin)
+            
+            # 3. For each 1h for this day, plot data as a function of frequency.
+            FFplot, LSTplot = np.meshgrid(freqarr[minfreqarg:maxfreqarg],lst_split_bins)
+            
+            axs[i].pcolormesh(FFplot,LSTplot,data_split_binned[:,minfreqarg:maxfreqarg],shading='auto',norm=normalizer) # norm = normalizer
+            
+            if i > 4:
+                axs[i].set_xlabel('Frequency [MHz]',fontsize=17)
+            axs[i].invert_yaxis()
+            if (i%ncols == 0):
+                axs[i].set_ylabel('LST [h]',fontsize=17)
+            ticks = np.linspace(0,24,25)
+            axs[i].set_yticks(ticks=ticks)
+            axs[i].set_title('Day '+str(i),fontsize=17)
+            axs[i].tick_params(labelsize=15)
+    
+    fig.subplots_adjust(right=0.8)
+    cbar_ax = fig.add_axes([0.82, 0.15, 0.02, 0.6])
+    #fig.colorbar(im, ax=axs.ravel().tolist())
+    fig.colorbar(im,cax=cbar_ax,ticks=ticks_cb)
+    cbar_ax.set_ylabel('Absolute Fractional Difference from Median', fontsize=17, labelpad=10)
+    cbar_ax.tick_params(labelsize=15)
+    cbar_ax.yaxis.set_major_formatter(PercentFormatter(xmax=1.0,decimals=2))
+    plt.subplots_adjust(hspace=0.1)
+    plt.suptitle('\n'+source+' - '+year+', '+instrument+', '+channel, x=0.41, y=0.91, fontsize=19)
+    plt.savefig(year+'_'+instrument+'_'+channel+'_'+source+'_var-from-median_custom.jpg',dpi=300,bbox_inches='tight')
     plt.show()
     
     return
@@ -277,7 +408,9 @@ def time_variation(data,lst,freqarr=freqarr_default,minfreq=30,maxfreq=200,minpe
         waterfall_alldays(res_data,lst,freqarr,minfreq=minfreq,maxfreq=maxfreq,minperbin=minperbin,year=year,instrument=instrument,channel=channel,source=source)
     elif plot_type == 'regular':
         plot_alldays(res_data,lst,freqarr,minperbin=minperbin,source=source)
+    elif plot_type == 'custom':
+        waterfall_custom(res_data,lst,freqarr,minfreq=minfreq,maxfreq=maxfreq,minperbin=minperbin,year=year,instrument=instrument,channel=channel,source=source)
     else:
-        print('Error: plot_type must be either \'waterfall\' or \'regular\' ')
+        print('Error: plot_type must be either \'waterfall\', \'regular\' or \'custom\'.')
     
     return

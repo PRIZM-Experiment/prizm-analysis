@@ -43,9 +43,9 @@ class DataPrep:
         
         # Flag bad spectra, then do interpolation
         # self.calib_mask_dict is retrieved within get_shorts (or res50, res100 equiv.)
-        self.shorts = self.get_shorts(self.data)
-        self.res50 = self.get_res50(self.data)
-        self.res100 = self.get_res100(self.data)
+        # self.shorts = self.get_shorts(self.data)
+        # self.res50 = self.get_res50(self.data)
+        # self.res100 = self.get_res100(self.data)
     
     def __call__(self, calibration_type='GSM'):
         return self.get_data_product(calibration_type), self.lst, self.systime
