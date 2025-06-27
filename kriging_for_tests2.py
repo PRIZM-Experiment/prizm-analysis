@@ -1,5 +1,7 @@
 # A module to perform interpolation of PRIZM data sets using the Kriging (GPR) method
 
+'''NOTE this version of kriging has been modified for some accuracy tests. DO NOT use this py file for interpolation of PRIZM data.'''
+
 '''Import modules ------------------------------------------------'''
 # Python modules
 import numpy as np
@@ -132,9 +134,6 @@ class Kriging:
         
         print('Verifying freq args are the same within kriging object: min', self.minfreqarg, ', max', self.maxfreqarg)
         
-        self.interp_data = np.zeros( shape=(len(freqarr[self.minfreqarg:self.maxfreqarg+1]),len(self.interp_times)) )
-        self.interp_std = np.zeros( shape=(len(freqarr[self.minfreqarg:self.maxfreqarg+1]),len(self.interp_times)) )
-        
         # We have to do the interpolation one frequency channel at a time
         for i,freq in enumerate(freqarr[self.minfreqarg:self.maxfreqarg+1]):
             #if i == 1: break # for testing, we break after 1 freq channel
@@ -171,16 +170,24 @@ class Kriging:
             self.save_avgd_time[i] = self.avgd_time
             self.save_avgd_data[i] = self.avgd_data
             self.save_avgd_data_std[i] = self.avgd_data_std
+
+            '''TESTING:''' # masking a large continuous chunk of calibrator data starting at day 23 from 0h to 10h
+            # rn = np.random.choice(a=[0,1],size=len(self.avgd_time),p=[0.2,0.8])
+            # self.test_mask = (rn == 1)
+            self.test_mask = ~((23*24*3600 <= (self.avgd_time-self.time[0]))&((self.avgd_time-self.time[0]) <= 23*24*3600+9.5*3600)) # True means not masked, False means masked
+            # self.test_mask = ~((23*24*3600+2.5*3600 <= (self.avgd_time-self.time[0]))&((self.avgd_time-self.time[0]) <= 23*24*3600+10*3600-2.5*3600)) # True means not masked, False means masked
+            
+            
+            self.interp_data = np.zeros( shape=(len(freqarr[self.minfreqarg:self.maxfreqarg+1]),len(self.avgd_time[~self.test_mask])) )
+            self.interp_std = np.zeros( shape=(len(freqarr[self.minfreqarg:self.maxfreqarg+1]),len(self.avgd_time[~self.test_mask])) )
             
             # Perform Kriging for all antenna times for the current frequency channel
-            for j, tt_interp in enumerate(self.interp_times):
+            for j, tt_interp in enumerate(self.avgd_time[~self.test_mask]):
                 
                 # Compute the covariance matrix for the current antenna time, and perform interpolation
                 '''Using averaged time series data for the weighted sum'''
-                self.CMatrix, self.interp_data[i,j],self.interp_std[i,j] = self.compute_covariance_and_krig(dat=self.avgd_data,t=self.avgd_time, dtmax=dtmax,interp_time=tt_interp,ACF_func=self.acf_func)
-                '''TESTING, COMMENT THIS OUT:'''
-                # self.CMatrix, self.interp_data[i,j],self.interp_std[i,j] = self.compute_covariance_and_krig(dat=self.data[:,freq_index],t=self.time, dtmax=dtmax,interp_time=tt_interp,ACF_func=self.acf_func)
-                '''END TESTING'''
+                '''TESTING:''' # predicting missing points in calibrator data
+                self.CMatrix, self.interp_data[i,j], self.interp_std[i,j] = self.compute_covariance_and_krig(dat=self.avgd_data[self.test_mask],t=self.avgd_time[self.test_mask], dtmax=dtmax,interp_time=tt_interp,ACF_func=self.acf_func)
                 
             
             print(freq,'MHz channel done')

@@ -317,7 +317,7 @@ def waterfall_custom(data,lst,freqarr=freqarr_default,minfreq=30,maxfreq=200,min
     # ---------------------------------------------- #
     
     # In this loop, i (first loop) indexes the day
-    if source == 'Post-flag short':
+    if source == 'Post-flag short' or source == 'Interpolated short':
         for i in range(len(axs)):
             if i == 0:
                 # 2. Bin each day into 1h bins5
@@ -385,7 +385,7 @@ def waterfall_custom(data,lst,freqarr=freqarr_default,minfreq=30,maxfreq=200,min
     cbar_ax.yaxis.set_major_formatter(PercentFormatter(xmax=1.0,decimals=2))
     plt.subplots_adjust(hspace=0.1)
     plt.suptitle('\n'+source+' - '+year+', '+instrument+', '+channel, x=0.41, y=0.91, fontsize=19)
-    plt.savefig(year+'_'+instrument+'_'+channel+'_'+source+'_var-from-median_custom.jpg',dpi=300,bbox_inches='tight')
+    plt.savefig(year+'_'+instrument+'_'+channel+'_'+source+'_var-from-median-_custom.jpg',dpi=300,bbox_inches='tight')
     plt.show()
     
     return
