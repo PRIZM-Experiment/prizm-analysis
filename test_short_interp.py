@@ -225,7 +225,7 @@ def smooth_acf(tvec,acf,cycle_jump=60,isACF=True):
         return smoothed_times, smoothed_acf, smoothed_std
 
 
-def make_ccf_2sided_advanced_binning(dat1,t1,dat2,t2,tmax,cycle_jump=5*60,max_time_diff=5*60):
+def make_ccf_2sided_advanced_binning(dat1,t1,dat2,t2,tmax,cycle_jump=5*60,max_time_diff=5*60,bin_spacing=35*60):
     '''Function to compute the cross-correlation of two datastreams (t1,dat1) and (t2,dat2). Algorithm is based on binning each dataset based on the same time bins so we have samples at the same times. The binning is "advanced" compared to make_ccf_2sided_binning, because it makes sure measurements from separate calibration cycles are in separate bins, and selects the closest in time/does a weighted average (TBD) of the temperature datapoints that fall within the same bin. At the same time it makes sure both time series end up regularly sampled and sampled at the same times before actually computing the CCF.
     
     Parameters
@@ -237,11 +237,12 @@ def make_ccf_2sided_advanced_binning(dat1,t1,dat2,t2,tmax,cycle_jump=5*60,max_ti
     (dt: No dt right now)
     dtmax: Maximum CCF time shift to compute, in seconds.
     cycle_jump: In seconds. Time separations larger than the set value of cycle_jump are considered to denote a change of calibration cycle. Default: 5*60 seconds = 5 minutes.
+    bin_spacing: Mean separation of two consecutive calibration cycles, in seconds. Default: 35*60 seconds = 35 minutes.
     
     '''
     # Since the two datastreams have different lengths, we need to bin them in time before we can cross-correlate.
     # Bin in ideal bins of width ~35mins, which is the mean separation of two consecutive calibration cycles
-    bin_spacing = 35*60 # seconds
+    # bin_spacing = 35*60 # seconds
     
     # ---- DAT1 BINNING ----: separating into individual calibration cycles (=icc)
     # retain the mean value and mean time
