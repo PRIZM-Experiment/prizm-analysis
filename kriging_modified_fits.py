@@ -1,17 +1,49 @@
 # A module to perform interpolation of PRIZM data sets using the Kriging (GPR) method
-'''NOTE: this is a modified version of kriging.py used for error propagation testing and creating plots. kriging.py is the official version
-to use to interpolate PRIZM data.'''
+
+'''This version of the kriging module is modified to add some more functional forms to the fit_ACF() function. These new functional forms are meant to test
+if fitting the ACF over a longer range improves kriging results.'''
 
 '''Import modules ------------------------------------------------'''
 # Python modules
 import numpy as np
 import scipy
 from matplotlib import pyplot as plt
+import scipy.interpolate as interpolate
+# import copy
+# import time
+
+# Custom modules
+# import data
+# import data_prep
+# try:
+#     reload(data) # dependent module (imported in data_prep)
+#     reload(data_prep)
+#     from data_prep import DataPrep
+# except:
+#     from importlib import reload
+#     reload(data) # dependent module (imported in data_prep)
+#     reload(data_prep)
+#     from data_prep import DataPrep
+
+# from helper_functions import *
+# import data_utils as du
+
+# try:
+#     reload(test_short_interp)
+#     from test_short_interp import make_acf, make_acf_alt
+# except:
+#     import test_short_interp
+#     reload(test_short_interp)
+#     from test_short_interp import make_acf, make_acf_alt
 '''---------------------------------------------------------------------'''
 
 ''' Frequency range ------------------------------------------'''
 # Standard for PRIZM data
 freqarr, freqstep = np.linspace(0,250,4096,retstep=True) # Based on number of frequency channels of the antenna
+# minfreq = 70 # for testing
+# maxfreq = 90 # for testing
+# minfreqarg = int(minfreq/freqstep)
+# maxfreqarg = int(maxfreq/freqstep)
 '''-------------------------------------------------------------'''
 
 '''Fitting functions -------------------------------------------'''
@@ -106,8 +138,6 @@ class Kriging:
         
         self.interp_data = np.zeros( shape=(len(freqarr[self.minfreqarg:self.maxfreqarg+1]),len(self.interp_times)) )
         self.interp_std = np.zeros( shape=(len(freqarr[self.minfreqarg:self.maxfreqarg+1]),len(self.interp_times)) )
-        self.interp1s_data = np.zeros( shape=(len(freqarr[self.minfreqarg:self.maxfreqarg+1]),len(self.interp_times)) )
-        self.interp1s_std = np.zeros( shape=(len(freqarr[self.minfreqarg:self.maxfreqarg+1]),len(self.interp_times)) )
         
         # We have to do the interpolation one frequency channel at a time
         for i,freq in enumerate(freqarr[self.minfreqarg:self.maxfreqarg+1]):
@@ -124,7 +154,7 @@ class Kriging:
             self.acf_tvec, self.acf, self.acf_std = self.smooth_acf(tvec=self.acf_tvec,acf=self.acf,cycle_jump=5*60)
             
             # Fit the ACF from dt=0 to dt=dtmax
-            self.acf_func, self.acf_func_1s = self.fit_acf(tvec=self.acf_tvec,acf=self.acf,acf_err=self.acf_std,dtmax=dtmax,functype=acf_functype)
+            self.acf_func = self.fit_acf(tvec=self.acf_tvec,acf=self.acf,acf_err=self.acf_std,dtmax=dtmax,functype=acf_functype)
             
             '''Here I change what data gets used for the weighted sum'''
             # Average the time series data taken within 1 calibration cycle before doing the weighted sum
@@ -151,7 +181,11 @@ class Kriging:
                 
                 # Compute the covariance matrix for the current antenna time, and perform interpolation
                 '''Using averaged time series data for the weighted sum'''
-                self.CMatrix, self.interp_data[i,j], self.interp_std[i,j], self.interp1s_data[i,j], self.interp1s_std[i,j] = self.compute_covariance_and_krig(dat=self.avgd_data,t=self.avgd_time, dtmax=dtmax,interp_time=tt_interp,ACF_func=self.acf_func)
+                self.CMatrix, self.interp_data[i,j],self.interp_std[i,j] = self.compute_covariance_and_krig(dat=self.avgd_data,t=self.avgd_time, dtmax=dtmax,interp_time=tt_interp,ACF_func=self.acf_func)
+                '''TESTING, COMMENT THIS OUT:'''
+                # self.CMatrix, self.interp_data[i,j],self.interp_std[i,j] = self.compute_covariance_and_krig(dat=self.data[:,freq_index],t=self.time, dtmax=dtmax,interp_time=tt_interp,ACF_func=self.acf_func)
+                '''END TESTING'''
+                
             
             print(freq,'MHz channel done')
     
@@ -188,10 +222,8 @@ class Kriging:
         
         Parameters
         -----------
-        cycle_jump: Minimum timegape between subsequent measurements to separate them into two different measurement cycles, in seconds. Default 60 seconds.
+        cycle_jump: Minimum timegap between subsequent measurements to separate them into two different measurement cycles, in seconds. Default 60 seconds.
         isACF: set to False if using this function for general averaging of another time of (non-ACF) dataset. Default True.
-        
-        
         '''
         # Separate the current dt values into bins within a few minutes of each other, I think this normally corresponds to data taken during the same rotation through calibrators before going back to antenna
         
@@ -222,6 +254,15 @@ class Kriging:
             t_binavg.append(np.mean(bin_tgroups[i]))
             acf_binavg.append(np.mean(bin_acf_groups[i]))
             acf_binstd.append(np.std(bin_acf_groups[i]))
+            # Code below is for testing
+#             if (bin_tgroups[i][-1]-bin_tgroups[i][0]) > 5*60:
+#                 print('bin larger than 5 minutes:',bin_tgroups[i][-1]-bin_tgroups[i][0])
+#             if (bin_tgroups[i][-1]-bin_tgroups[i][0] > largest_binwidth):
+#                 largest_binwidth = bin_tgroups[i][-1]-bin_tgroups[i][0]
+#                 largest_bini = i
+
+#         print(largest_binwidth/60,'mins')
+#         print(largest_bini)
 
         # Add the dt=0 datapoint back in post-smoothing
         if isACF == True:
@@ -253,9 +294,8 @@ class Kriging:
             # Quadratic for 0<dt<dtmax + dt=0 peak height
             c, cov = np.polyfit(x=tvec[(0<tvec)&(tvec<dtmax)]/3600,y=acf[(0<tvec)&(tvec<dtmax)],w=1/acf_err[(0<tvec)&(tvec<dtmax)],deg=2,cov=True)
             c_errs = np.diag(cov)**(1/2) # errors on the fit coefficients, for now not used for anything
-            print(c, c_errs, c_errs/c)
             polyfunc = np.poly1d(c)
-            polyfunc_1s = np.poly1d(c+5*c_errs)
+            popt, perr = c, c_errs # rename
 
             # zeropeak_height = abs(acf[0] - acf[1])
 
@@ -264,27 +304,44 @@ class Kriging:
                 polypart[dt == 0] = acf[0]
                 return polypart
 
-            def ACF_func_1s(dt):
-                polypart = polyfunc_1s(dt)
-                polypart[dt == 0] = acf[0]
-                return polypart
-            
             # def ACF_func(dt):
             #     return polyfunc(dt) + delta_function(dt,amplitude=zeropeak_height)
+
+        elif functype == 'exppeak':
+            # Exponential for 0<dt<dtmax + dt=0 peak height
+            fit_func = expfunc
+            popt, pcov = scipy.optimize.curve_fit(f=fit_func,xdata=tvec[(0<tvec)&(tvec<dtmax)]/3600,ydata=acf[(0<tvec)&(tvec<dtmax)],p0=[9.1e10,4])
             
-            # def ACF_func_1s(dt):
-            #     return polyfunc_1s(dt) + delta_function(dt,amplitude=zeropeak_height)
+            prefunc = ACF_fit(popt[0],popt[1],functype='exponential')
+            perr = np.sqrt(np.diag(pcov))
+            zeropeak_height = abs(acf[0] - acf[1])
+
+            def ACF_func(dt):
+                exppart = prefunc(dt)
+                exppart[dt == 0] = acf[0]
+                return exppart
             
-            '''MAKE A PLOT OF THE FIT AND FIT WITH ERROR'''
-            plt.rcParams.update({'font.size': 12})
-            plt.errorbar(x=tvec[(tvec<dtmax)]/3600,y=acf[(tvec<dtmax)],yerr=acf_err[(tvec<dtmax)],ls='None',marker='.',label='Smoothed data')
-            plt.plot(tvec[(tvec<dtmax)]/3600,ACF_func(tvec[(tvec<dtmax)]/3600),label='Best fit')
-            plt.plot(tvec[(tvec<dtmax)]/3600,ACF_func_1s(tvec[(tvec<dtmax)]/3600),label=r'Best fit + $1\sigma$')
+            # def ACF_func(dt):
+            #     return prefunc(dt) + delta_function(dt,amplitude=zeropeak_height)
+            
+            # ACF_func = ACF_fit(popt[0],popt[1],functype=functype)
+
+        elif functype == 'Bspline':
+            # Cubic B-spline fit for 0<dt<dtmax + dt=0 peak height
+            t, c, k = interpolate.splrep(x=tvec[(0<tvec)&(tvec<dtmax)]/3600, y=acf[(0<tvec)&(tvec<dtmax)],w=1/acf_err[(0<tvec)&(tvec<dtmax)], k=3, s=3)
+            spline = interpolate.BSpline(t, c, k, extrapolate=True)
+
+            def ACF_func(dt):
+                splinepart = spline(dt)
+                splinepart[dt == 0] = acf[0]
+                return splinepart
+
+            plt.errorbar(x=tvec[(0<tvec)&(tvec<dtmax)]/3600, y=acf[(0<tvec)&(tvec<dtmax)],yerr=acf_err[(0<tvec)&(tvec<dtmax)],marker='.',ls='None',color='black',capsize=2,zorder=3)
+            t_arr = np.linspace(0,dtmax/3600,1000)
+            plt.plot(t_arr,ACF_func(t_arr),alpha=1,label='B-spline, k=3, s=1',zorder=1)
             plt.legend()
-            plt.xlabel('Time separation dt [hrs]')
-            plt.ylabel('Power')
             plt.show()
-            
+        
         elif functype == 'linear':
             fit_func = linfunc
             popt, pcov = scipy.optimize.curve_fit(f=fit_func,xdata=tvec[tvec<dtmax]/3600,ydata=acf[tvec<dtmax],p0=[-6e10/8,9.1e10])
@@ -297,7 +354,7 @@ class Kriging:
             c = np.polyfit(x=tvec[tvec<dtmax]/3600,y=acf[tvec<dtmax],deg=4)
             ACF_func = np.poly1d(c)
         
-        return ACF_func, ACF_func_1s
+        return ACF_func
     
     
     def compute_covariance_and_krig(self,dat,t,dtmax,interp_time,ACF_func):
@@ -312,44 +369,39 @@ class Kriging:
         ACF_func: function modelling the ACF of dat, fit for at least 0<=dt<=dtmax. Takes dt input in **hours**.
         '''
         
-        # Making a matrix with only the data within dtmax/2 of the interp time, to insure we only use up to dtmax of the ACF.
+        # Making a matrix with only the data within dtmax/2 of the interp time, to ensure we only use up to dtmax of the ACF.
         d_red = dat[abs(t - interp_time) < dtmax/2] 
         t_red = t[abs(t - interp_time) < dtmax/2]
+        self.Ktimes = t_red # for testing
         
         # this line skips interp_times that are not within dtmax/2 of the measured data
-        if len(t_red) == 0: return np.nan, np.nan, np.nan, np.nan, np.nan
+        if len(t_red) == 0: return np.nan, np.nan, np.nan 
         
         d = np.append(d_red,0)
         tarr = np.append(t_red,interp_time)
         C = np.zeros(shape=(len(d),len(d))) # initialize the covariance matrix
-        C_1s = np.zeros(shape=(len(d),len(d))) # initialize the covariance matrix USED WITH FIT+1SIGMA MODEL
                     
         for i in range(len(d)):
             ti = tarr[i]
             dtij_arr = abs(ti-tarr) # full array of the time separation from ti
+            #if np.any(dtij_arr>dtmax): print('larger') # normally this should not happen since we've already truncated the array
 
             C[i,:] = ACF_func(dtij_arr/3600) # ACF_func is defined for dt in hours
-            C_1s[i,:] = self.acf_func_1s(dtij_arr/3600)
-            
          
         C += 1e20
-        C_1s += 1e20
         
         # Invert the covariance matrix
         Cinv = np.linalg.inv(C)
-        C1sinv = np.linalg.inv(C_1s)
         
         # "w": array of weights for the weighted sum to compute inteprolated value
         n = len(d)-1
         w = -Cinv[n,0:n] / Cinv[n,n]
-        w1s = -C1sinv[n,0:n] / C1sinv[n,n]
+        self.Kweights = w # for testing
         
         # compute weighted sum to find interpolated value
         dinterp = np.dot(w,d[0:n])
-        dinterp_1s = np.dot(w1s,d[0:n])
         
         # compute error on interpolated value
         interp_std = np.sqrt(1/Cinv[n,n]) # standard deviation
-        interp1s_std = np.sqrt(1/C1sinv[n,n])
         
-        return C, dinterp, interp_std, dinterp_1s, interp1s_std
+        return C, dinterp, interp_std
