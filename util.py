@@ -28,11 +28,12 @@ def read_vna_data(filename, delimiter=",", encoding="ISO-8859-1"):
     data
 
     Written by Kelly A. Foran
-    Adapted by Ronniy C. Joseph
+    Adapted by Ronniy C. Joseph & Lisa Nasu-Yu
     """
     #Loop through file to figure out where the header starts, and how many data rows we're reading and create appropiate
     #arrays
-    header_line, n_data_rows = find_start_and_end(filename)
+    header_line, n_data_rows = find_start_and_end(filename, encoding=encoding)
+    date_time = get_time(filename, delimiter=delimiter, encoding=encoding)
     data = np.zeros((n_data_rows, 6))
 
     read_labels = False
@@ -44,7 +45,7 @@ def read_vna_data(filename, delimiter=",", encoding="ISO-8859-1"):
 
             #Read VNA Measurement after the Column Header was read, see below.
             if read_data:
-                data[data_counter] = decode_line(line, delimiter=delimiter, n_columns = len(column_header))
+                data[data_counter] = decode_line(line, index, delimiter=delimiter, n_columns = len(column_header))
                 data_counter +=1
 
             #Record Header Labels after the newline was found, see below.
@@ -61,7 +62,7 @@ def read_vna_data(filename, delimiter=",", encoding="ISO-8859-1"):
                         read_labels = True
                 except IndexError:
                     pass
-    return data
+    return data, date_time
 
 
 def find_start_and_end(filename, lookup="\n", encoding="ISO-8859-1"):
@@ -98,8 +99,24 @@ def find_start_and_end(filename, lookup="\n", encoding="ISO-8859-1"):
         raise
     return header_line, n_data_rows
 
+def get_time(filename, delimiter=',', encoding="ISO-8859-1"):
+    with open(filename, encoding=encoding) as datafile:
+        datafile.readline()
+        line = datafile.readline().split(delimiter)
+        if line[0] == 'Date':
+            date = line[1].split(' / ')[::-1]
+        else:
+            return 'Could not find time'
+        line = datafile.readline().split(delimiter)           
+        if line[0] =='Time':
+            systime = line[1].split(sep=':')
+        else:
+            return 'Could not find time'
+        date_time = [int(i) for i in np.concatenate((date, systime))]
+    return date_time
 
-def decode_line(line, delimiter, n_columns):
+
+def decode_line(line, index, delimiter, n_columns):
     #Deals with formatting challenges across the various data sets
     #The challenge is that frequency formatting changes based on year an delimiter, pending on channel spacing
     #There are two cases
@@ -117,7 +134,7 @@ def decode_line(line, delimiter, n_columns):
     if len(tags) == 6:
         for s, string in enumerate(tags):
             data[s] = string.replace(",", ".")
-        data = data.astype(np.float)
+        data = data.astype(float)
 
     # <2021 data where every column has been split into before and after decimal points
     elif len(tags) == 12:
@@ -125,20 +142,36 @@ def decode_line(line, delimiter, n_columns):
         for s in indices:
             data[counter] = tags[s] + "." + tags[s+1]
             counter += 1
-        data = data.astype(np.float)
+        data = data.astype(float)
 
-    #<2021 where frequencies are integers, but other columns have been split into two
-    #TODO build a robuster check there might be the unlikely odd case the Magnitude/Phase columns are ints
+    #<2021 where one of frequency, magnitude, or phase is an integer, but other columns have been split into two
     elif len(tags) == 10:
-        indices = np.array([0,1,3,5,6,8])
+        if len(str(tags[1])) < 6:
+            # frequency is an integer. For all decimal frequencies, there are 7 decimal places (6666667 or 3333333)
+            if len(str(tags[2])) < 6:
+                # sanity check --> if magnitude not an integer, column 2 must be the decimal column (several digits)
+                raise Exception(f"error reading: can't determine decimal place on line {index}")
+            indices = np.array([0, 1, 3, 5, 6, 8])
+            integer = [0, 5]
+        elif len(str(tags[3])) < 6:
+            # magnitude is an integer
+            indices = np.array([0, 2, 3, 5, 7, 9])
+            integer = [2, 9]
+        elif len(str(tags[4])) < 6:
+            # phase is integer
+            indices = np.array([0, 2, 4, 5, 7, 8])
+            integer = [4, 7]
+        else:
+            raise Exception(f"error reading: can't determine decimal place on line {index}")
+            
         for s in indices:
-            if s == 0 or s == empty_column :
+            if s in integer:
                 data[counter] = tags[s]
             else:
                 data[counter] = tags[s] + "." + tags[s+1]
             counter += 1
-        data = data.astype(np.float)
+        data = data.astype(float)
+        
     else:
         raise Exception("A new case of VNA data formatting!")
     return data
-
